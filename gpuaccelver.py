@@ -148,9 +148,12 @@ def main():
     X, y = [d.astype(np.float32) for d in read_data(traind_file, trainl_file)]
     # initialize weights
     theta1, theta2 = [t.astype(np.float32) for t in load_theta(theta_file)]
+    #initialize gradients
+    theta1_gradient = np.zeros(theta1.shape, np.float32)
+    theta2_gradient = np.zeros(theta2.shape, np.float32)
 
     epoch = 0
-    error = 1
+    error = np.ones(1, np.float32)
 
     # initialize opencl environment
     platform = cl.get_platforms()[0]
@@ -168,13 +171,21 @@ def main():
     # copy and convert data on host to cl-ready device
     cl_X = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
     cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
-    cl_theta1_gradient = cl.Buffer(context, mf.WRITE_ONLY, )
+    cl_theta1 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1)
+    cl_theta2 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta2)
+    cl_theta1_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta1_gradient.nbytes)
+    cl_theta2_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta2_gradient.nbytes)
+    cl_error = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=error.nbytes)
 
     start_time = time.time()
 
     while epoch < epochs and error > tolerance:
-        # update weights
-
+        # run forward and back propagations on gpu to get error and weight gradients
+        program.update_weights()
+        # copy to host buffer
+        cl.enqueue_copy(queue, error, cl_error)
+        cl.enqueue_copy(queue, theta1_gradient, cl_theta1_gradient)
+        cl.enqueue_copy(queue, theta2_gradient, cl_theta2_gradient)
         theta1 += -alpha * theta1_gradient
         theta2 += -alpha * theta2_gradient
 
