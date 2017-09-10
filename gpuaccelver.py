@@ -163,6 +163,23 @@ def main():
     # create the kernel to run
     program = cl.Program(context, '''
 
+__kernel void sigmoid (__global const float4 *z,
+                       __global float4 *result) {
+    int gid = get_global_id(0);
+    result[gid] = 1.0 / (1.0 + exp(-z.f));
+}
+
+/*__kernel void update_weights (__global const float4 *theta1,
+                              __global const float4 *theta2,
+                              __global const float4 *X,
+                              __global const float4 *y,
+                              __global float *cost,
+                              __global float *theta1_gradient,
+                              __global float *theta2_gradient) {
+    int gid = get_global_id(0);
+
+}*/ 
+        
         ''').build()
 
     queue = cl.CommandQueue(context)
@@ -170,38 +187,44 @@ def main():
 
     # copy and convert data on host to cl-ready device
     cl_X = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
-    cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
-    cl_theta1 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1)
-    cl_theta2 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta2)
-    cl_theta1_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta1_gradient.nbytes)
-    cl_theta2_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta2_gradient.nbytes)
-    cl_error = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=error.nbytes)
+    test = np.zeros(X.shape, np.float32)
+    cl_test = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=X.nbytes)
+    
+    # cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
+    # cl_theta1 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1)
+    # cl_theta2 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta2)
+    # cl_theta1_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta1_gradient.nbytes)
+    # cl_theta2_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta2_gradient.nbytes)
+    # cl_error = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=error.nbytes)
+    program.sigmoid(queue, test.shape, None, cl_X, cl_test)
+    cl.enqueue_copy(queue, test, cl_test)
+    print(test.shape)
 
-    start_time = time.time()
+    # start_time = time.time()
 
-    while epoch < epochs and error > tolerance:
-        # run forward and back propagations on gpu to get error and weight gradients
-        program.update_weights()
-        # copy to host buffer
-        cl.enqueue_copy(queue, error, cl_error)
-        cl.enqueue_copy(queue, theta1_gradient, cl_theta1_gradient)
-        cl.enqueue_copy(queue, theta2_gradient, cl_theta2_gradient)
-        theta1 += -alpha * theta1_gradient
-        theta2 += -alpha * theta2_gradient
+    # while epoch < epochs and error > tolerance:
+    #     # run forward and back propagations on gpu to get error and weight gradients
+    #     program.update_weights()
+    #     # copy to host buffer
+    #     cl.enqueue_copy(queue, error, cl_error)
+    #     cl.enqueue_copy(queue, theta1_gradient, cl_theta1_gradient)
+    #     cl.enqueue_copy(queue, theta2_gradient, cl_theta2_gradient)
+    #     theta1 += -alpha * theta1_gradient
+    #     theta2 += -alpha * theta2_gradient
 
-        # increment epoch and print error
-        if epoch % 100 == 0:
-            print('Epoch %d:  %s' % (epoch, str(error)))
-        epoch += 1
+    #     # increment epoch and print error
+    #     if epoch % 100 == 0:
+    #         print('Epoch %d:  %s' % (epoch, str(error)))
+    #     epoch += 1
 
-    print('\nTime to train: %s' % str(time.time() - start_time))
-    print('\nAccuracy: %s' % str(get_correct(theta1, theta2, X, y) / X.shape[0]))
+    # print('\nTime to train: %s' % str(time.time() - start_time))
+    # print('\nAccuracy: %s' % str(get_correct(theta1, theta2, X, y) / X.shape[0]))
 
-    demo_x = X[np.random.randint(0, X.shape[0]), :]
-    print('\nThe predicted digit is: %s' % str(predict(theta1, theta2, demo_x)))
-    show_image(demo_x)
+    # demo_x = X[np.random.randint(0, X.shape[0]), :]
+    # print('\nThe predicted digit is: %s' % str(predict(theta1, theta2, demo_x)))
+    # show_image(demo_x)
 
-    save_theta(save_file, {'Theta1': theta1, 'Theta2': theta2})
+    # save_theta(save_file, {'Theta1': theta1, 'Theta2': theta2})
 
 
 if __name__ == '__main__':
