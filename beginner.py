@@ -45,10 +45,8 @@ def write_file (fname, data, mode='w'):
 
 def usage ():
     print('''
-            
             ./beginner.py --train training_data training_labels [--test test_data test_labels] 
                           [--theta theta_file]
-
             
             ''')
     quit()
@@ -138,6 +136,10 @@ def sigmoid (z, deriv=False):
     if not deriv:
         return 1.0 / (1.0 + np.exp(-z))
     return sigmoid(z) * (1 - sigmoid(z))
+
+
+def softmax (z):
+    return np.exp(z) / np.sum(np.exp(z), axis=0)
 
 
 # return cost and gradients

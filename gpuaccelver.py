@@ -1,5 +1,8 @@
+#!/usr/bin/python3
+
 import numpy as np
 import pyopencl as cl
+from pyopencl import array
 import matplotlib.pyplot as plt
 import scipy.io as spio
 import time
@@ -59,6 +62,7 @@ def usage ():
                                   [--test test_data_file test_label_file]
                                   [--theta theta_file] [-h, --help]
         ''')
+    quit()
 
 
 def parse_args ():
@@ -163,10 +167,10 @@ def main():
     # create the kernel to run
     program = cl.Program(context, '''
 
-__kernel void sigmoid (__global const float4 *z,
-                       __global float4 *result) {
+__kernel void sigmoid (__global const float *z,
+                       __global float *result) {
     int gid = get_global_id(0);
-    result[gid] = 1.0 / (1.0 + exp(-z.f));
+    result[gid] = z[gid];
 }
 
 /*__kernel void update_weights (__global const float4 *theta1,
@@ -186,9 +190,10 @@ __kernel void sigmoid (__global const float4 *z,
     mf = cl.mem_flags
 
     # copy and convert data on host to cl-ready device
+    X = np.ones((4,4), np.float)
     cl_X = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
-    test = np.zeros(X.shape, np.float32)
-    cl_test = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=X.nbytes)
+    test = np.zeros(X.shape, np.float)
+    cl_test = cl.Buffer(context, mf.WRITE_ONLY, test.nbytes)
     
     # cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
     # cl_theta1 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1)
@@ -198,7 +203,8 @@ __kernel void sigmoid (__global const float4 *z,
     # cl_error = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=error.nbytes)
     program.sigmoid(queue, test.shape, None, cl_X, cl_test)
     cl.enqueue_copy(queue, test, cl_test)
-    print(test.shape)
+    print(X)
+    print(test)
 
     # start_time = time.time()
 
