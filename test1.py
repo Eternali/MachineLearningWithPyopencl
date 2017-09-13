@@ -5,13 +5,15 @@ from pyopencl import array
 import numpy
  
 if __name__ == "__main__":
-    vector = numpy.zeros((1, 1), cl.array.vec.float4)
-    matrix = numpy.zeros((1, 4), cl.array.vec.float4)
-    matrix[0, 0] = (1, 2, 4, 8)
-    matrix[0, 1] = (16, 32, 64, 128)
-    matrix[0, 2] = (3, 6, 9, 12)
-    matrix[0, 3] = (5, 10, 15, 25)
-    vector[0, 0] = (1, 2, 4, 8)
+    vector = numpy.ones(4, numpy.float32)
+    matrix = numpy.ones((4, 4), numpy.float32)
+    # vector = numpy.zeros((1, 1), cl.array.vec.float4)
+    # matrix = numpy.zeros((1, 4), cl.array.vec.float4)
+    # matrix[0, 0] = (1, 2, 4, 8)
+    # matrix[0, 1] = (16, 32, 64, 128)
+    # matrix[0, 2] = (3, 6, 9, 12)
+    # matrix[0, 3] = (5, 10, 15, 25)
+    # vector[0, 0] = (1, 2, 4, 8)
      
     ## Step #1. Obtain an OpenCL platform.
     platform = cl.get_platforms()[0]
