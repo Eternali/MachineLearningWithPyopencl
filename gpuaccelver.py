@@ -93,10 +93,11 @@ def sigmoid (z, deriv=False):
 def read_data (data_file, label_file, is_mat=True):
     if is_mat:
         data = spio.loadmat(data_file, squeeze_me=True)
-        X = np.asarray(data['X'])
+        labels = spio.loadmat(label_file, squeeze_me=True)
+        X = np.array([np.array(x).astype(np.float32) for x in data['X']]).astype(np.float32)
         # transform decimal label values to one-hot vectors
-        tmp_y = np.asarray(spio.loadmat(label_file, squeeze_me=True)['y'])
-        y = np.zeros((tmp_y.shape[0], output_size))
+        tmp_y = np.array(labels['y'])
+        y = np.zeros((tmp_y.shape[0], output_size), np.float32)
         for i, c in enumerate(tmp_y):
             y[i, c-1] = 1
         # or for demonstration
@@ -118,8 +119,10 @@ def load_theta (theta_file='', is_mat=True):
         theta1 = np.asarray(data['Theta1'])
         theta2 = np.asarray(data['Theta2'])
     else:
-        theta1 = np.random.rand(hidden_size, input_size + 1) * 2 * epsilon_init - epsilon_init
-        theta2 = np.random.rand(output_size, hidden_size + 1) * 2 * epsilon_init - epsilon_init
+        theta1 = np.random.rand(hidden_size, input_size + 1).astype(np.float32) \
+                * 2 * epsilon_init - epsilon_init
+        theta2 = np.random.rand(output_size, hidden_size + 1).astype(np.float32) \
+                * 2 * epsilon_init - epsilon_init
 
     return theta1, theta2
 
@@ -149,12 +152,12 @@ def get_correct (theta1, theta2, X, y):
 def main():
     # load training data
     traind_file, trainl_file, testd_file, testl_file, theta_file = parse_args()
-    X, y = [d.astype(np.float32) for d in read_data(traind_file, trainl_file)]
+    X, y = read_data(traind_file, trainl_file)
     # initialize weights
-    theta1, theta2 = [t.astype(np.float32) for t in load_theta(theta_file)]
+    theta1, theta2 = load_theta(theta_file)
     #initialize gradients
-    theta1_gradient = np.zeros(theta1.shape, np.float32)
-    theta2_gradient = np.zeros(theta2.shape, np.float32)
+    theta1_grad = np.zeros(theta1.shape, np.float32)
+    theta2_grad = np.zeros(theta2.shape, np.float32)
 
     epoch = 0
     error = np.ones(1, np.float32)
@@ -167,20 +170,22 @@ def main():
     # create the kernel to run
     program = cl.Program(context, '''
 
-__kernel void sigmoid (__global const float *z,
+__kernel void sigmoid (__global float *z,
                        __global float *result) {
     int gid = get_global_id(0);
     result[gid] = 1.0 / (1.0 + exp(-z[gid]));
 }
 
-/*__kernel void update_weights (__global const float4 *theta1,
-                              __global const float4 *theta2,
-                              __global const float4 *X,
-                              __global const float4 *y,
-                              __global float *cost,
-                              __global float *theta1_gradient,
-                              __global float *theta2_gradient) {
+/*__kernel void update_weights (__global const float *theta1,
+                                __global const float *theta2,
+                                __global const float *X,
+                                __global const float *y,
+                                __global float *cost,
+                                __global float *theta1_grad,
+                                __global float *theta2_grad) {
     int gid = get_global_id(0);
+
+    
 
 }*/ 
         
@@ -190,7 +195,6 @@ __kernel void sigmoid (__global const float *z,
     mf = cl.mem_flags
 
     # copy and convert data on host to cl-ready device
-    # X = np.random.rand(X.shape[0], X.shape[1]).astype(np.float32)
     X_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
     test = np.zeros(X.shape, np.float32)
     cl_test = cl.Buffer(context, mf.WRITE_ONLY, test.nbytes)
@@ -198,39 +202,39 @@ __kernel void sigmoid (__global const float *z,
     # cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
     # cl_theta1 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1)
     # cl_theta2 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta2)
-    # cl_theta1_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta1_gradient.nbytes)
-    # cl_theta2_gradient = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta2_gradient.nbytes)
+    # cl_theta1_grad = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta1_grad.nbytes)
+    # cl_theta2_grad = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta2_grad.nbytes)
     # cl_error = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=error.nbytes)
     program.sigmoid(queue, test.shape, None, X_buf, cl_test)
     cl.enqueue_copy(queue, test, cl_test)
     print(sigmoid(X[0]))
     print(test[0])
 
-    # start_time = time.time()
+    start_time = time.time()
 
-    # while epoch < epochs and error > tolerance:
-    #     # run forward and back propagations on gpu to get error and weight gradients
-    #     program.update_weights()
-    #     # copy to host buffer
-    #     cl.enqueue_copy(queue, error, cl_error)
-    #     cl.enqueue_copy(queue, theta1_gradient, cl_theta1_gradient)
-    #     cl.enqueue_copy(queue, theta2_gradient, cl_theta2_gradient)
-    #     theta1 += -alpha * theta1_gradient
-    #     theta2 += -alpha * theta2_gradient
+    while epoch < epochs and error > tolerance:
+        # run forward and back propagations on gpu to get error and weight gradients
+        program.update_weights()
+        # copy to host buffer
+        cl.enqueue_copy(queue, error, error_buf)
+        cl.enqueue_copy(queue, theta1_grad, theta1_grad_buf)
+        cl.enqueue_copy(queue, theta2_grad, theta2_grad_buf)
+        theta1 += -alpha * theta1_grad
+        theta2 += -alpha * theta2_grad
 
-    #     # increment epoch and print error
-    #     if epoch % 100 == 0:
-    #         print('Epoch %d:  %s' % (epoch, str(error)))
-    #     epoch += 1
+        # increment epoch and print error
+        if epoch % 100 == 0:
+            print('Epoch %d:  %s' % (epoch, str(error)))
+        epoch += 1
 
-    # print('\nTime to train: %s' % str(time.time() - start_time))
-    # print('\nAccuracy: %s' % str(get_correct(theta1, theta2, X, y) / X.shape[0]))
+    print('\nTime to train: %s' % str(time.time() - start_time))
+    print('\nAccuracy: %s' % str(get_correct(theta1, theta2, X, y) / X.shape[0]))
 
-    # demo_x = X[np.random.randint(0, X.shape[0]), :]
-    # print('\nThe predicted digit is: %s' % str(predict(theta1, theta2, demo_x)))
-    # show_image(demo_x)
+    demo_x = X[np.random.randint(0, X.shape[0]), :]
+    print('\nThe predicted digit is: %s' % str(predict(theta1, theta2, demo_x)))
+    show_image(demo_x)
 
-    # save_theta(save_file, {'Theta1': theta1, 'Theta2': theta2})
+    save_theta(save_file, {'Theta1': theta1, 'Theta2': theta2})
 
 
 if __name__ == '__main__':
