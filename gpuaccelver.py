@@ -170,10 +170,33 @@ def main():
     # create the kernel to run
     program = cl.Program(context, '''
 
-__kernel void sigmoid (__global float *z,
+__kernel void sigmoid (__global float *size,
+                       __global float *z,
                        __global float *result) {
     int gid = get_global_id(0);
     result[gid] = 1.0 / (1.0 + exp(-z[gid]));
+}
+
+__kernel void transpose (__global float *a_t,
+                         __global float *a,
+                         unsigned a_width,
+                         unsigned a_height) {
+    int read_idx = get_global_id(0) + get_global_id(1) * a_width;
+    int write_idx = get_global_id(1) + get_global_id(0) * a_height;
+
+    a_t[write_idx] = a[read_idx];
+}
+
+__kernel void dot (__global float *m1,
+                   __global float *m2,
+                   __global float *result) {
+    int i = get_global_id(0);
+    int j = get_global_id(1);
+    result[i + size * j] = 0;
+
+    for (int k = 0; k < size; k++) {
+        result[i + size * j] += m1[k + size * i] * m2[j + size * k];
+    }
 }
 
 /*__kernel void update_weights (__global const float *theta1,
@@ -196,7 +219,7 @@ __kernel void sigmoid (__global float *z,
 
     # copy and convert data on host to cl-ready device
     X_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
-    test = np.zeros(X.shape, np.float32)
+    test = np.zeros(X.shape, np.float32) // or np.empty_like(X)
     cl_test = cl.Buffer(context, mf.WRITE_ONLY, test.nbytes)
     
     # cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
@@ -211,9 +234,13 @@ __kernel void sigmoid (__global float *z,
     print(test[0])
 
     start_time = time.time()
+    m = X.shape[0]
 
     while epoch < epochs and error > tolerance:
-        # run forward and back propagations on gpu to get error and weight gradients
+        # run forward and back propagations to get error and weight gradients
+        # running as much as possible on gpu and avoiding memory transfer
+        a0 = np.insert(X, 0, 1, axis=1)
+        z1 = program.dot(a0, theta1)
         program.update_weights()
         # copy to host buffer
         cl.enqueue_copy(queue, error, error_buf)
