@@ -158,7 +158,7 @@ def update_weights (theta1, theta2, X, y, reg_lam):
     a2 = sigmoid(z2)  #m, 10
 
     # backpropagate to update weights
-    d2 = np.subtract(a2, y)  # m, 10
+    d2 = np.multiply(np.subtract(a2, y), sigmoid(a2, deriv=True))  # m, 10
     d1 = np.multiply(d2.dot(theta2)[:,1:], sigmoid(z1, deriv=True))  # m, 25
 
     dtot1 = a0.T.dot(d1)  # 401, 25
