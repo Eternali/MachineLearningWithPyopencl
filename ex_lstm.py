@@ -17,3 +17,4 @@ model.fit(data, target, nb_epoch=10000, batch_size=1, verbose=2, validation_data
 
 # display a prediction
 print(model.predict(test))
+

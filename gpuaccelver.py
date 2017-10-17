@@ -68,7 +68,7 @@ def usage ():
 def parse_args ():
     args = ['', '', '', '', '']
     argv = sys.argv
-    try: 
+    try:
         for a, arg in enumerate(argv):
             if arg == '--train':
                 args[:2] = argv[a+1], argv[a+2]
@@ -150,17 +150,6 @@ def get_correct (theta1, theta2, X, y):
 
 
 def main():
-    # load training data
-    traind_file, trainl_file, testd_file, testl_file, theta_file = parse_args()
-    X, y = read_data(traind_file, trainl_file)
-    # initialize weights
-    theta1, theta2 = load_theta(theta_file)
-    #initialize gradients
-    theta1_grad = np.zeros(theta1.shape, np.float32)
-    theta2_grad = np.zeros(theta2.shape, np.float32)
-
-    epoch = 0
-    error = np.ones(1, np.float32)
 
     # initialize opencl environment
     platform = cl.get_platforms()[0]
@@ -170,8 +159,7 @@ def main():
     # create the kernel to run
     program = cl.Program(context, '''
 
-__kernel void sigmoid (__global float *size,
-                       __global float *z,
+__kernel void sigmoid (__global float *z,
                        __global float *result) {
     int gid = get_global_id(0);
     result[gid] = 1.0 / (1.0 + exp(-z[gid]));
@@ -187,7 +175,8 @@ __kernel void transpose (__global float *a_t,
     a_t[write_idx] = a[read_idx];
 }
 
-__kernel void dot (__global float *m1,
+__kernel void dot (const unsigned int size,
+                   __global float *m1,
                    __global float *m2,
                    __global float *result) {
     int i = get_global_id(0);
@@ -199,71 +188,92 @@ __kernel void dot (__global float *m1,
     }
 }
 
-/*__kernel void update_weights (__global const float *theta1,
-                                __global const float *theta2,
-                                __global const float *X,
-                                __global const float *y,
-                                __global float *cost,
-                                __global float *theta1_grad,
-                                __global float *theta2_grad) {
-    int gid = get_global_id(0);
-
-    
-
-}*/ 
-        
         ''').build()
 
     queue = cl.CommandQueue(context)
     mf = cl.mem_flags
 
-    # copy and convert data on host to cl-ready device
-    X_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
-    test = np.zeros(X.shape, np.float32) // or np.empty_like(X)
-    cl_test = cl.Buffer(context, mf.WRITE_ONLY, test.nbytes)
-    
-    # cl_y = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
-    # cl_theta1 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1)
-    # cl_theta2 = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta2)
-    # cl_theta1_grad = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta1_grad.nbytes)
-    # cl_theta2_grad = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=theta2_grad.nbytes)
-    # cl_error = cl.Buffer(context, mf.WRITE_ONLY, hostbuf=error.nbytes)
-    program.sigmoid(queue, test.shape, None, X_buf, cl_test)
-    cl.enqueue_copy(queue, test, cl_test)
-    print(sigmoid(X[0]))
-    print(test[0])
+    # initialize variables to be used
 
-    start_time = time.time()
+    # load training data
+    traind_file, trainl_file, testd_file, testl_file, theta_file = parse_args()
+    X, y = read_data(traind_file, trainl_file)
+    # initialize weights
+    theta1, theta2 = load_theta(theta_file)
+    #initialize gradients
+    theta1_grad = np.zeros(theta1.shape, np.float32)
+    theta2_grad = np.zeros(theta2.shape, np.float32)
+
+    epoch = 0
+    error = np.ones(1, np.float32)
     m = X.shape[0]
 
-    while epoch < epochs and error > tolerance:
+    theta1T = np.array(theta1.T, np.float32)
+    theta2T = np.array(theta2.T, np.float32)
+    a0 = np.zeros((m, X.shape[1]+1), np.float32)       # m, 401
+    z1 = np.zeros((m, theta1.shape[0]), np.float32)    # m, 25
+    z1s = np.empty_like(z1)                            # m, 25
+    a1 = np.zeros((m, theta1.shape[0]+1), np.float32)  # m, 26
+    z2 = np.zeros((m, theta2.shape[0]), np.float32)    # m, 10
+    a2 = np.zeros((m, theta2.shape[0]), np.float32)    # m, 10
+
+    # copy and convert data on host to cl-ready device
+    # X_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=X)
+    # y_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=y)
+    theta1T_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta1T)
+    # theta2T_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=theta2T)
+    z1_buf = cl.Buffer(context, mf.READ_WRITE, size=z1.nbytes)
+    # z1s_buf = cl.Buffer(context, mf.READ_WRITE, size=z1s.nbytes)
+    # a1_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=a1)
+    # z2_buf = cl.Buffer(context, mf.READ_WRITE, size=z2.nbytes)
+    # a2_buf = cl.Buffer(context, mf.WRITE_ONLY, size=a2.nbytes)
+
+    # cl.enqueue_copy(queue, test, cl_test)
+    # print(sigmoid(X[0]))
+    # print(test[0])
+
+    start_time = time.time()
+    print(start_time)
+
+    for i in range(1):  # while epoch < epochs and error > tolerance:
         # run forward and back propagations to get error and weight gradients
         # running as much as possible on gpu and avoiding memory transfer
         a0 = np.insert(X, 0, 1, axis=1)
-        z1 = program.dot(a0, theta1)
-        program.update_weights()
-        # copy to host buffer
-        cl.enqueue_copy(queue, error, error_buf)
-        cl.enqueue_copy(queue, theta1_grad, theta1_grad_buf)
-        cl.enqueue_copy(queue, theta2_grad, theta2_grad_buf)
-        theta1 += -alpha * theta1_grad
-        theta2 += -alpha * theta2_grad
+        a0_buf = cl.Buffer(context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=a0)
+        program.dot(queue, a0.shape, None, np.int32(len(a0)), a0_buf, theta1T_buf, z1_buf)
+        cl.enqueue_copy(queue, z1, z1_buf)
+        # program.sigmoid(queue, z1.shape, None, z1_buf, z1s_buf)
+        # cl.enqueue_copy(queue, z1s, z1s_buf)
+        # a1 = np.insert(z1s, 0, 1, axis=1)
+        # program.dot(queue, a1.shape, None, np.int32(len(a1)), a1_buf, theta2T_buf, z2_buf)
+        # cl.enqueue_copy(queue, z2, z2_buf)
+        # program.sigmoid(queue, z2.shape, None, z2_buf, a2_buf)
+        # cl.enqueue_copy(queue, a2, a2_buf)
 
-        # increment epoch and print error
-        if epoch % 100 == 0:
-            print('Epoch %d:  %s' % (epoch, str(error)))
-        epoch += 1
+        print(z1)[0]
+
+        # program.update_weights()
+        # # copy to host buffer
+        # cl.enqueue_copy(queue, error, error_buf)
+        # cl.enqueue_copy(queue, theta1_grad, theta1_grad_buf)
+        # cl.enqueue_copy(queue, theta2_grad, theta2_grad_buf)
+        # theta1 += -alpha * theta1_grad
+        # theta2 += -alpha * theta2_grad
+
+        # # increment epoch and print error
+        # if epoch % 100 == 0:
+        #     print('Epoch %d:  %s' % (epoch, str(error)))
+        # epoch += 1
 
     print('\nTime to train: %s' % str(time.time() - start_time))
-    print('\nAccuracy: %s' % str(get_correct(theta1, theta2, X, y) / X.shape[0]))
+    # print('\nAccuracy: %s' % str(get_correct(theta1, theta2, X, y) / X.shape[0]))
 
-    demo_x = X[np.random.randint(0, X.shape[0]), :]
-    print('\nThe predicted digit is: %s' % str(predict(theta1, theta2, demo_x)))
-    show_image(demo_x)
+    # demo_x = X[np.random.randint(0, X.shape[0]), :]
+    # print('\nThe predicted digit is: %s' % str(predict(theta1, theta2, demo_x)))
+    # show_image(demo_x)
 
-    save_theta(save_file, {'Theta1': theta1, 'Theta2': theta2})
+    # save_theta(save_file, {'Theta1': theta1, 'Theta2': theta2})
 
 
 if __name__ == '__main__':
     main()
-
