@@ -116,7 +116,31 @@ def sigmoid (z, deriv=False):
 ##----  MAIN FUNCTION STARTS  ------
 
 def main ():
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    context = cl.Context([device])
 
+    helpers = cl.Program(context, 
+        '''
+__kernel void sigmoid (__global float *z, __global float *result) {
+    int gid = get_global_id(0);
+    result[gid] = 1.0 / (1.0 + exp(-z[gid]));
+}
+
+__kernel void sigderiv (__global float *z, __global float *result) {
+    int gid = get_global_id(0);
+    result[gid] = (1.0)
+    sigmoid(z, result) * (1.0 * sigmoid(z, result));
+}
+        ''').build()
+
+    queue = cl.CommandQueue(context)
+    mf = cl.mem_flags
+
+    train_file, test_file = parse_args()
+    X, y = read_data(train_file)
+    thetas = load_theta(options=[{'height': hidden_size, 'width': X.shape(0) + 1}, 
+                                 {'height': y.shape(0), 'width': hidden_size + 1}])
 
 
 if __name__ == '__main__':
