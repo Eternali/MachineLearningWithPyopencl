@@ -72,7 +72,7 @@ def parse_args ():
     return args if '' not in args[0] else usage()
 
 
-def read_data (filename, form='mat')
+def read_data (filename, form='mat'):
     if form == 'mat':
         data = spio.loadmat(filename, squeeze_me=True)
         X = np.array([np.array(x).astype(np.float32) for x in data['X']]).astype(np.float32)
