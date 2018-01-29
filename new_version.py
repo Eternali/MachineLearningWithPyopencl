@@ -14,10 +14,23 @@ import time
 
 ##----  CONSTANTS  ----##
 
+IMAGE_WIDTH = 20
+IMAGE_HEIGHT = 20
+INPUT_DIM = IMAGE_WIDTH * IMAGE_HEIGHT
+HIDDEN_DIM = 25
+OUTPUT_DIM = 10
 
 
 ##----  HELPERS  ----##
 
+def usage():
+    print()
+
+
+def show_image(x):
+    reshaped = np.reshape(x, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    image = mpl.pyplot.imshow(reshaped, 'gray', origin='lower')
+    mpl.pyplot.show()
 
 
 ##----  KERNEL  ----##
@@ -105,6 +118,7 @@ def main():
     MAX_EPOCS = 1000
     TOLERANCE = np.array([0.3], np.float32)
     alpha = 0.1
+    lbda = 0.01
     epoch = 0
     error = np.ones(1, np.float32)
 
@@ -154,7 +168,7 @@ def main():
         cl.enqueue_copy(queue, a2, a2b)
 
         # error calculation
-
+        error = np.subtract(a2, y)
 
         # update_weights
         theta1 -= alpha * theta1_grad
@@ -167,7 +181,7 @@ def main():
 
     # save trained network data
     save_theta(save_file, { 'Theta1': theta1, 'Theta2': theta2 })
-    save_log(time.time() - start_time, alpha, epoch, error)
+    save_log(time.time() - start_time, alpha, lbda, epoch, error)
 
     # show stats on trained network
     print('')
